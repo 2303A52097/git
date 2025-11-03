@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hospital Management System - Prototype</title>
+  <style>
+    /* Simple, clean styles for the prototype */
+    :root{--bg:#f6f8fb;--card:#fff;--accent:#2563eb;--muted:#6b7280}
+    body{font-family:Inter,ui-sans-serif,system-ui,Helvetica,Arial,sans-serif;background:var(--bg);margin:0;padding:24px;color:#111}
+    .container{max-width:1100px;margin:0 auto}
+    header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+    h1{font-size:20px;margin:0}
+    .card{background:var(--card);padding:16px;border-radius:10px;box-shadow:0 6px 18px rgba(15,23,42,0.06);}
+    .controls{display:flex;gap:12px;align-items:center}
+    select,input[type=button]{padding:8px 12px;border-radius:8px;border:1px solid #e6edf3;background:white}
+    nav{display:flex;gap:8px;margin-top:12px}
+    .tab{padding:8px 12px;border-radius:8px;border:1px solid transparent;cursor:pointer}
+    .tab.active{background:linear-gradient(90deg,#eef2ff,#fff);border-color:#e5e7eb}
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:16px;margin-top:16px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #f1f5f9;text-align:left}
+    .muted{color:var(--muted);font-size:13px}
+    .pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#eef2ff;color:var(--accent);font-weight:600}
+    .hidden{display:none}
+    .uml{overflow:auto;padding:12px}
+    footer{margin-top:16px;color:var(--muted);font-size:13px}
+    /* small responsive tweaks */
+    @media (max-width:900px){.grid{grid-template-columns:1fr;}.controls{flex-direction:column;align-items:flex-start}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Hospital Management System — Role-based Prototype</h1>
+      <div class="controls card">
+        <label class="muted">Simulated Login:</label>
+        <select id="roleSelect" aria-label="role select">
+          <option value="Patient">Patient</option>
+          <option value="Nurse">Nurse</option>
+          <option value="Doctor">Doctor</option>
+          <option value="Administrator">Administrator</option>
+        </select>
+        <input type="button" value="Switch Role" id="switchRole">
+      </div>
+    </header>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <strong>Active Role:</strong> <span id="activeRole" class="pill">Patient</span>
+          <div class="muted" id="roleDesc">Patient can view own records & prescriptions only.</div>
+        </div>
+        <div class="muted">Demo data & UI to demonstrate abstraction, information hiding, cohesion & modularity</div>
+      </div>
+
+      <nav id="tabs" style="margin-top:12px">
+        <button class="tab active" data-tab="records">Patient Records</button>
+        <button class="tab" data-tab="appointments">Appointments</button>
+        <button class="tab" data-tab="billing">Billing</button>
+        <button class="tab" data-tab="pharmacy">Pharmacy</button>
+        <button class="tab" data-tab="uml">UML Diagrams</button>
+      </nav>
+
+      <div class="grid">
+        <section class="card" id="mainPanel">
+          <!-- Dynamic content appears here -->
+        </section>
+
+        <aside class="card">
+          <h3>Quick Info</h3>
+          <p class="muted">This sidebar shows which UI elements are visible to each role (information hiding) and explains design choices.</p>
+          <ul>
+            <li><strong>Doctor:</strong> Full patient access, edit health records, view billing & prescriptions.</li>
+            <li><strong>Nurse:</strong> Update daily reports and vitals; cannot change diagnoses or billing.</li>
+            <li><strong>Patient:</strong> View-only access to their personal record & prescriptions.</li>
+            <li><strong>Administrator:</strong> Manage users, roles, and system settings.</li>
+          </ul>
+          <hr>
+          <h4>Cohesion & Modularity</h4>
+          <p class="muted">Subsystems are separated: <strong>Records</strong>, <strong>Appointments</strong>, <strong>Billing</strong>, <strong>Pharmacy</strong>. Each subsystem has its own UI and responsibilities (high cohesion).</p>
+        </aside>
+      </div>
+
+      <footer>
+        <strong>Notes:</strong> This is a front-end prototype simulating role-based information hiding. No real backend or authentication is present.
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    /************************************************************************
+     * Data model (kept private within this module) -> illustrates
+     * information hiding: sensitive fields not exposed to unauthorized roles
+     ************************************************************************/
+    (function(){
+      // "Private" data store (module scope)
+      const patients = [
+        {
+          id:1, name:'Anjali R', age:26, phone:'+91-9000000001',
+          ssn:'IND-SSN-1001', // sensitive
+          diagnosis:'Hypertension',
+          prescriptions:[{drug:'Amlodipine',dose:'5mg',duration:'30 days'}],
+          dailyReports:[{date:'2025-10-30',notes:'BP stable, resting 78/120',nurse:'S. Kumar'}],
+          billing:[{billId:'B1001',amount:4500,status:'Paid'}]
+        },
+        {
+          id:2, name:'Rahul K', age:32, phone:'+91-9000000002',
+          ssn:'IND-SSN-1002',
+          diagnosis:'Fracture - Radius',
+          prescriptions:[{drug:'Ibuprofen',dose:'400mg',duration:'10 days'}],
+          dailyReports:[{date:'2025-11-01',notes:'Cast applied, advised rest',nurse:'L. Rao'}],
+          billing:[{billId:'B1002',amount:12000,status:'Unpaid'}]
+        }
+      ];
+
+      // Role definitions - abstraction via role objects and permission checks
+      const Roles = {
+        Patient: {
+          canViewPatient:true,
+          canEditPatient:false,
+          canViewOtherPatients:false,
+          canManageSystem:false,
+          desc:'Patient can view only their own records and prescriptions.'
+        },
+        Nurse: {
+          canViewPatient:true,
+          canEditPatientDailyReports:true,
+          canEditPatient:false,
+          canViewOtherPatients:true,
+          canManageSystem:false,
+          desc:'Nurse can update daily reports and vitals.'
+        },
+        Doctor: {
+          canViewPatient:true,
+          canEditPatient:true,
+          canViewOtherPatients:true,
+          canManageSystem:false,
+          desc:'Doctor can view & update patient health records.'
+        },
+        Administrator: {
+          canViewPatient:true,
+          canEditPatient:true,
+          canViewOtherPatients:true,
+          canManageSystem:true,
+          desc:'Administrator can manage users & system.'
+        }
+      };
+
+      // Current simulated session
+      let session = {role:'Patient', userPatientId:1};
+
+      // Utility: get visible patient data based on role & requested patient id
+      function getPatientView(patientId){
+        const patient = patients.find(p => p.id===patientId);
+        if(!patient) return null;
+
+        const rolePerm = Roles[session.role];
+
+        // Build view object, hiding sensitive info if unauthorized (information hiding)
+        const view = {
+          id: patient.id,
+          name: patient.name,
+          age: patient.age,
+          phone: patient.phone,
+          diagnosis: rolePerm.canEditPatient || rolePerm.canViewOtherPatients ? patient.diagnosis : (session.role==='Patient' ? patient.diagnosis : 'Restricted'),
+          prescriptions: patient.prescriptions,
+          dailyReports: rolePerm.canEditPatientDailyReports || rolePerm.canEditPatient ? patient.dailyReports : (session.role==='Patient' ? patient.dailyReports : []),
+          billing: (rolePerm.canEditPatient || rolePerm.canManageSystem) ? patient.billing : (session.role==='Patient' ? patient.billing : [])
+        };
+
+        // SSN is very sensitive — only Administrators and Doctors can see it
+        if(rolePerm.canManageSystem || session.role==='Doctor') view.ssn = patient.ssn;
+
+        return view;
+      }
+
+      // UI wiring
+      const mainPanel = document.getElementById('mainPanel');
+      const roleSelect = document.getElementById('roleSelect');
+      const switchRoleBtn = document.getElementById('switchRole');
+      const activeRolePill = document.getElementById('activeRole');
+      const roleDesc = document.getElementById('roleDesc');
+
+      function renderTab(tab){
+        // Clear
+        mainPanel.innerHTML = '';
+        if(tab==='records') renderRecords();
+        else if(tab==='appointments') renderAppointments();
+        else if(tab==='billing') renderBilling();
+        else if(tab==='pharmacy') renderPharmacy();
+        else if(tab==='uml') renderUML();
+      }
+
+      function renderRecords(){
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = `
+          <h2>Patient Records</h2>
+          <p class="muted">Listing patients visible to role: <strong>${session.role}</strong></p>
+        `;
+
+        // Determine list of patients visible
+        let visiblePatients = [];
+        if(Roles[session.role].canViewOtherPatients){ visiblePatients = patients; }
+        else { visiblePatients = patients.filter(p=>p.id===session.userPatientId); }
+
+        const table = document.createElement('table');
+        table.innerHTML = `
+          <thead><tr><th>Name</th><th>Age</th><th>Phone</th><th>Actions</th></tr></thead>
+          <tbody></tbody>
+        `;
+        const tbody = table.querySelector('tbody');
+
+        visiblePatients.forEach(p=>{
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${p.name}</td><td>${p.age}</td><td>${p.phone}</td><td><button data-id='${p.id}' class='viewBtn'>View</button></td>`;
+          tbody.appendChild(tr);
+        });
+
+        wrapper.appendChild(table);
+        mainPanel.appendChild(wrapper);
+
+        // Attach listeners
+        wrapper.querySelectorAll('.viewBtn').forEach(b=>b.addEventListener('click', (e)=>{
+          const id = Number(e.target.dataset.id);
+          showPatientDetail(id);
+        }));
+      }
+
+      function showPatientDetail(id){
+        const view = getPatientView(id);
+        if(!view) return alert('Patient not found');
+
+        // Build detail card
+        const detail = document.createElement('div');
+        detail.innerHTML = `
+          <h3>Patient: ${view.name} <span class="muted">(ID: ${view.id})</span></h3>
+          <p><strong>Age:</strong> ${view.age} &nbsp; <strong>Phone:</strong> ${view.phone}</p>
+          <p><strong>Diagnosis:</strong> ${view.diagnosis || 'Restricted'}</p>
+          <div id='sensitiveBlock'></div>
+          <h4>Prescriptions</h4>
+          <ul>${view.prescriptions.map(pr=>`<li>${pr.drug} — ${pr.dose} — ${pr.duration}</li>`).join('')}</ul>
+          <h4>Daily Reports</h4>
+          <ul>${(view.dailyReports && view.dailyReports.length)? view.dailyReports.map(r=>`<li>${r.date}: ${r.notes} <span class='muted'>(${r.nurse||''})</span></li>`).join('') : '<li class="muted">No reports visible</li>'}</ul>
+        `;
+
+        // Only show SSN if available in view
+        if(view.ssn){
+          detail.querySelector('#sensitiveBlock').innerHTML = `<p><strong>SSN:</strong> ${view.ssn} <span class='muted'>(sensitive)</span></p>`;
+        }
+
+        // If role can edit patient records
+        if(Roles[session.role].canEditPatient){
+          const editBtn = document.createElement('button');
+          editBtn.textContent = 'Edit Diagnosis';
+          editBtn.style.marginTop='8px';
+          editBtn.addEventListener('click', ()=>{
+            const newDiag = prompt('Enter new diagnosis', view.diagnosis||'');
+            if(newDiag!=null){
+              // apply change to private data store
+              const p = patients.find(x=>x.id===id);
+              p.diagnosis = newDiag;
+              alert('Diagnosis updated (in demo store)');
+              renderTab('records');
+            }
+          });
+          detail.appendChild(editBtn);
+        }
+
+        // Nurses can add daily reports
+        if(Roles[session.role].canEditPatientDailyReports){
+          const addReport = document.createElement('div');
+          addReport.style.marginTop='12px';
+          addReport.innerHTML = `
+            <h4>Add Daily Report</h4>
+            <textarea id='newReport' rows='3' style='width:100%'></textarea>
+            <div style='margin-top:6px'><button id='saveReport'>Save Report</button></div>
+          `;
+          detail.appendChild(addReport);
+          addReport.querySelector('#saveReport').addEventListener('click', ()=>{
+            const text = addReport.querySelector('#newReport').value.trim();
+            if(text){
+              const p = patients.find(x=>x.id===id);
+              p.dailyReports.push({date:new Date().toISOString().split('T')[0],notes:text,nurse:'(current user)'});
+              alert('Report added (demo store)');
+              renderTab('records');
+            }
+          });
+        }
+
+        // Replace main panel content with detail
+        mainPanel.innerHTML = '';
+        mainPanel.appendChild(detail);
+      }
+
+      function renderAppointments(){
+        mainPanel.innerHTML = `
+          <h2>Appointment Scheduling</h2>
+          <p class='muted'>Subsystem: handles booking & viewing appointments</p>
+          <p>For demo, this section shows how patients can view their appointments while doctors can manage slots.</p>
+          <ul>
+            <li>Patients: View own appointments</li>
+            <li>Doctors: Add or cancel slots</li>
+          </ul>
+        `;
+      }
+
+      function renderBilling(){
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = `<h2>Billing</h2><p class='muted'>Access restricted based on role.</p>`;
+
+        // If role has billing visibility
+        const rolePerm = Roles[session.role];
+        if(rolePerm.canManageSystem || rolePerm.canEditPatient){
+          wrapper.innerHTML += `<p>Full billing details available to Doctors and Administrators.</p>`;
+        } else if(session.role==='Patient'){
+          wrapper.innerHTML += `<p>Your bills:</p>` + patients.filter(p=>p.id===session.userPatientId).map(p=>`<ul>${p.billing.map(b=>`<li>${b.billId}: ₹${b.amount} — ${b.status}</li>`).join('')}</ul>`).join('');
+        } else {
+          wrapper.innerHTML += `<p class='muted'>Billing is restricted for your role.</p>`;
+        }
+        mainPanel.appendChild(wrapper);
+      }
+
+      function renderPharmacy(){
+        mainPanel.innerHTML = `
+          <h2>Pharmacy</h2>
+          <p class='muted'>Prescriptions shown. Only doctors can add new prescriptions; patients can view theirs.</p>
+        `;
+      }
+
+      function renderUML(){
+        // Provide simple inline SVG diagrams for Use Case & Class Diagram
+        mainPanel.innerHTML = `<h2>UML Diagrams</h2><div class='uml card'>
+          <h3>Use Case Diagram (simplified)</h3>
+          <svg width='100%' height='220' viewBox='0 0 900 220' xmlns='http://www.w3.org/2000/svg'>
+            <!-- Actors -->
+            <text x='10' y='30' font-size='14'>Patient</text>
+            <circle cx='40' cy='20' r='12' stroke='#111' fill='none'/>
+            <text x='10' y='70' font-size='14'>Nurse</text>
+            <circle cx='40' cy='60' r='12' stroke='#111' fill='none'/>
+            <text x='10' y='110' font-size='14'>Doctor</text>
+            <circle cx='40' cy='100' r='12' stroke='#111' fill='none'/>
+            <text x='10' y='150' font-size='14'>Admin</text>
+            <circle cx='40' cy='140' r='12' stroke='#111' fill='none'/>
+
+            <!-- Use cases -->
+            <ellipse cx='420' cy='40' rx='120' ry='24' fill='#fff' stroke='#111'/>
+            <text x='380' y='44' font-size='12'>View Personal Records</text>
+
+            <ellipse cx='420' cy='90' rx='140' ry='24' fill='#fff' stroke='#111'/>
+            <text x='370' y='94' font-size='12'>Update Daily Reports</text>
+
+            <ellipse cx='420' cy='140' rx='120' ry='24' fill='#fff' stroke='#111'/>
+            <text x='390' y='144' font-size='12'>Edit Health Records</text>
+
+            <ellipse cx='420' cy='190' rx='120' ry='24' fill='#fff' stroke='#111'/>
+            <text x='370' y='194' font-size='12'>Manage System / Users</text>
+
+            <!-- Associations -->
+            <line x1='52' y1='20' x2='300' y2='40' stroke='#222' stroke-dasharray='3 4' />
+            <line x1='52' y1='60' x2='340' y2='90' stroke='#222' />
+            <line x1='52' y1='100' x2='340' y2='140' stroke='#222' />
+            <line x1='52' y1='140' x2='300' y2='190' stroke='#222' />
+          </svg>
+
+          <h3 style='margin-top:12px'>Class Diagram (simplified)</h3>
+          <svg width='100%' height='220' viewBox='0 0 900 220' xmlns='http://www.w3.org/2000/svg'>
+            <!-- Classes -->
+            <rect x='40' y='10' width='220' height='70' fill='#fff' stroke='#111'/>
+            <text x='60' y='30'>Patient</text>
+            <text x='60' y='48' class='muted' font-size='12'>- id: int</text>
+            <text x='60' y='62' class='muted' font-size='12'>- name: string</text>
+
+            <rect x='320' y='10' width='220' height='70' fill='#fff' stroke='#111'/>
+            <text x='340' y='30'>User (abstract)</text>
+            <text x='340' y='48' class='muted' font-size='12'>- userId: int</text>
+            <text x='340' y='62' class='muted' font-size='12'>- role: Role</text>
+
+            <rect x='40' y='110' width='220' height='70' fill='#fff' stroke='#111'/>
+            <text x='60' y='130'>Appointment</text>
+            <text x='60' y='148' class='muted' font-size='12'>- dateTime</text>
+
+            <rect x='320' y='110' width='300' height='70' fill='#fff' stroke='#111'/>
+            <text x='340' y='130'>MedicalRecord</text>
+            <text x='340' y='148' class='muted' font-size='12'>- diagnosis</text>
+            <text x='340' y='164' class='muted' font-size='12'>- prescriptions[]</text>
+
+            <!-- relationships -->
+            <line x1='260' y1='40' x2='320' y2='40' stroke='#111' marker-end='url(#arrow)'></line>
+            <line x1='160' y1='80' x2='160' y2='110' stroke='#111'></line>
+            <line x1='260' y1='140' x2='320' y2='140' stroke='#111'></line>
+
+            <defs>
+              <marker id='arrow' markerWidth='10' markerHeight='10' refX='6' refY='3' orient='auto'>
+                <path d='M0,0 L6,3 L0,6 z' fill='#111' />
+              </marker>
+            </defs>
+          </svg>
+        </div>`;
+      }
+
+      // Tab switching
+      document.querySelectorAll('#tabs .tab').forEach(t=>t.addEventListener('click', e=>{
+        document.querySelectorAll('#tabs .tab').forEach(x=>x.classList.remove('active'));
+        e.target.classList.add('active');
+        renderTab(e.target.dataset.tab);
+      }));
+
+      // Role switching
+      switchRoleBtn.addEventListener('click', ()=>{
+        session.role = roleSelect.value;
+        // If patient role selected, default to patient id 1 (demo)
+        if(session.role==='Patient') session.userPatientId = 1;
+        activeRolePill.textContent = session.role;
+        roleDesc.textContent = Roles[session.role].desc;
+        // Re-render current tab
+        const activeTab = document.querySelector('#tabs .tab.active').dataset.tab;
+        renderTab(activeTab);
+      });
+
+      // initial render
+      renderTab('records');
+
+      // Expose some functions to window for debugging (keeps true data private unless dev tools used)
+      window.__HMS_DEBUG = {
+        // DO NOT call this in a real system — only for demo to show private store
+        _privatePatients: patients,
+        Roles, session
+      };
+
+    })();
+  </script>
+</body>
+</html>

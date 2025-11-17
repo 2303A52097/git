@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Premium Weather & Movie App</title>
+
+<style>
+    body {
+        margin: 0;
+        font-family: "Poppins", sans-serif;
+        background: linear-gradient(135deg, #4a00e0, #8e2de2);
+        color: white;
+    }
+
+    .wrapper {
+        max-width: 1000px;
+        margin: auto;
+        padding: 20px;
+    }
+
+    h1 {
+        text-align: center;
+        margin-bottom: 10px;
+        font-size: 38px;
+        font-weight: 700;
+    }
+
+    .app-section {
+        margin-top: 40px;
+        padding: 25px;
+        background: rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(15px);
+        border-radius: 18px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+        animation: fadeIn 1s ease;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(30px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    input {
+        width: 100%;
+        padding: 12px;
+        border-radius: 10px;
+        border: none;
+        margin-top: 10px;
+        font-size: 17px;
+    }
+
+    button {
+        width: 100%;
+        padding: 14px;
+        margin-top: 12px;
+        background: #ffdd00;
+        color: black;
+        font-size: 18px;
+        font-weight: 600;
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+
+    button:hover {
+        background: #ffe642;
+    }
+
+    .card {
+        margin-top: 20px;
+        padding: 20px;
+        background: rgba(255,255,255,0.2);
+        border-radius: 15px;
+        animation: fadeIn 1s ease;
+    }
+
+    img {
+        width: 160px;
+        border-radius: 12px;
+        margin-top: 10px;
+    }
+
+</style>
+</head>
+
+<body>
+<div class="wrapper">
+    <h1>🌤 Weather & 🎬 Movie App</h1>
+
+    <!-- WEATHER APP -->
+    <div class="app-section">
+        <h2>🌦 Smart Weather Dashboard</h2>
+        <input type="text" id="cityInput" placeholder="Enter city name...">
+        <button onclick="getWeather()">Get Weather</button>
+        <div id="weatherResult"></div>
+    </div>
+
+    <!-- MOVIE APP -->
+    <div class="app-section">
+        <h2>🎥 MovieScope – Movie Info Search</h2>
+        <input type="text" id="movieInput" placeholder="Enter movie title...">
+        <button onclick="searchMovie()">Search Movie</button>
+        <div id="movieResult"></div>
+    </div>
+
+</div>
+
+<script>
+
+/* ================= WEATHER APP ================= */
+async function getWeather() {
+    const city = document.getElementById("cityInput").value;
+    if (city === "") return alert("Enter a city!");
+
+    const apiKey = "YOUR_OPENWEATHER_API_KEY";
+    const url = 
+      `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.cod === "404") {
+        document.getElementById("weatherResult").innerHTML = "<p>City not found.</p>";
+        return;
+    }
+
+    document.getElementById("weatherResult").innerHTML = `
+        <div class="card">
+            <h3>${data.name}</h3>
+            <p><strong>Temperature:</strong> ${data.main.temp}°C</p>
+            <p><strong>Humidity:</strong> ${data.main.humidity}%</p>
+            <p><strong>Wind Speed:</strong> ${data.wind.speed} m/s</p>
+            <img src="https://openweathermap.org/img/wn/${data.weather[0].icon}@2x.png">
+        </div>
+    `;
+}
+
+
+/* ================= MOVIE APP ================= */
+async function searchMovie() {
+    const title = document.getElementById("movieInput").value;
+    if (title === "") return alert("Enter a movie title!");
+
+    const apiKey = "YOUR_OMDB_API_KEY";
+    const url = `https://www.omdbapi.com/?t=${title}&apikey=${apiKey}`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.Response === "False") {
+        document.getElementById("movieResult").innerHTML = "<p>Movie not found.</p>";
+        return;
+    }
+
+    document.getElementById("movieResult").innerHTML = `
+        <div class="card">
+            <h3>${data.Title} (${data.Year})</h3>
+            <img src="${data.Poster}" alt="Poster unavailable">
+            <p><strong>Genre:</strong> ${data.Genre}</p>
+            <p><strong>Director:</strong> ${data.Director}</p>
+            <p><strong>IMDB Rating:</strong> ⭐ ${data.imdbRating}</p>
+        </div>
+    `;
+}
+
+</script>
+
+</body>
+</html>

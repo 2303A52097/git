@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Movie Recommendation Web App (CI/CD Demo)</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;}
+    body{max-width:980px;margin:28px auto;padding:16px}
+    header{display:flex;align-items:center;justify-content:space-between}
+    h1{font-size:20px;margin:0}
+    .controls{display:flex;gap:8px;margin-top:12px}
+    input[type="search"]{flex:1;padding:8px;border-radius:6px;border:1px solid #ddd}
+    button{padding:8px 12px;border-radius:6px;border:1px solid #888;background:#f5f5f5;cursor:pointer}
+    .grid{display:grid;grid-template-columns:1fr 320px;gap:16px;margin-top:18px}
+    .card{padding:12px;border-radius:8px;border:1px solid #eee;box-shadow:0 1px 4px rgba(0,0,0,0.03)}
+    .movie-item{display:flex;gap:12px;padding:8px;border-bottom:1px solid #f0f0f0;cursor:pointer}
+    .movie-item img{width:56px;height:80px;object-fit:cover;border-radius:4px}
+    .meta{font-size:13px}
+    .meta b{display:block}
+    .recommendations li{margin-bottom:8px}
+    footer{margin-top:20px;font-size:13px;color:#555}
+    .tests{margin-top:12px;padding:10px;background:#fafafa;border-radius:6px;border:1px dashed #ddd}
+    .ok{color:green} .bad{color:red}
+    @media (max-width:880px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Movie Recommendation Web App</h1>
+    <div style="font-size:12px;color:#666">Demo: CI/CD learning project</div>
+  </header>
+
+  <section class="controls">
+    <input id="query" type="search" placeholder="Search movies (e.g. Inception)" value="inception" />
+    <button id="searchBtn">Search</button>
+    <button id="runTestsBtn">Run Unit Tests</button>
+  </section>
+
+  <div class="grid">
+    <div>
+      <div class="card" id="resultsCard">
+        <h3>Search Results</h3>
+        <div id="resultsList">Type a query and press Search</div>
+      </div>
+
+      <div class="card" style="margin-top:12px" id="detailsCard">
+        <h3>Selected Movie Details</h3>
+        <div id="details">No movie selected</div>
+      </div>
+
+      <div class="card tests" id="testsBox" aria-hidden="true">
+        <h3>Unit Test Output</h3>
+        <pre id="testOutput">Tests not run yet.</pre>
+      </div>
+    </div>
+
+    <aside>
+      <div class="card">
+        <h3>Recommendations</h3>
+        <ul id="recs" class="recommendations">No recommendations yet</ul>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h4>Notes</h4>
+        <p style="font-size:13px;color:#444">Replace <code>YOUR_OMDB_API_KEY</code> in the JS below with your OMDb API key. Get one at <code>http://www.omdbapi.com/apikey.aspx</code>.</p>
+      </div>
+    </aside>
+  </div>
+
+  <footer>
+    Suggested commits for CI/CD:
+    <ul>
+      <li><code>v1: add search and display (OMDb integration)</code></li>
+      <li><code>v2: add recommendation logic and unit tests</code></li>
+      <li><code>ci: add GitHub Actions workflow (build & tests)</code></li>
+    </ul>
+  </footer>
+
+  <script>
+  // ---------- CONFIG ----------
+  // IMPORTANT: Replace this with your actual OMDb API key
+  const OMDB_API_KEY = 'YOUR_OMDB_API_KEY';
+
+  // ---------- Small in-memory cache for fetched movie details ----------
+  const cache = { searchResults: [], details: {} };
+
+  // ---------- Helpers & utility functions (unit-testable) ----------
+  function parseGenres(genreString){
+    if(!genreString) return [];
+    return genreString.split(',').map(g=>g.trim()).filter(Boolean);
+  }
+
+  function safeParseRating(ratings){
+    // OMDb returns Ratings array; prefer imdbRating if available in details object
+    if(!ratings) return 0;
+    // ratings could be a string '7.8' or an array
+    if(typeof ratings === 'string'){
+      const n = parseFloat(ratings);
+      return Number.isFinite(n)?n:0;
+    }
+    // if it's an array, try to find IMDb rating
+    if(Array.isArray(ratings)){
+      const imdb = ratings.find(r=>/imdb/i.test(r.Source));
+      if(imdb){
+        // imdb.Value looks like '7.8/10'
+        const m = parseFloat(imdb.Value);
+        return Number.isFinite(m)?m:0;
+      }
+      // fallback: try first rating numeric part
+      const first = ratings[0] && ratings[0].Value && parseFloat(ratings[0].Value);
+      return Number.isFinite(first)?first:0;
+    }
+    return 0;
+  }
+
+  function rankByRating(movieDetailsList){
+    // expects array of objects with imdbRating or Ratings
+    return movieDetailsList.slice().sort((a,b)=>{
+      const va = Number(a.imdbRating) || safeParseRating(a.Ratings) || 0;
+      const vb = Number(b.imdbRating) || safeParseRating(b.Ratings) || 0;
+      return vb - va;
+    });
+  }
+
+  function recommendFromPool(selectedMovie, pool, maxRec=5){
+    // selectedMovie: details object with Genre; pool: array of details objects
+    if(!selectedMovie || !pool || pool.length===0) return [];
+    const selectedGenres = parseGenres(selectedMovie.Genre || '');
+    // score by shared genres and rating
+    const scored = pool.map(m=>{
+      if(!m || !m.Genre) return {...m, _score: -Infinity};
+      const genres = parseGenres(m.Genre);
+      const shared = genres.filter(g=>selectedGenres.includes(g)).length;
+      const rating = Number(m.imdbRating) || safeParseRating(m.Ratings) || 0;
+      // score: prefer shared genres first (weight 10) then rating
+      const score = shared*10 + rating;
+      return {...m, _score:score};
+    });
+    const filtered = scored.filter(m=>m.imdbID !== selectedMovie.imdbID && m._score>-Infinity);
+    filtered.sort((a,b)=>b._score - a._score);
+    return filtered.slice(0, maxRec);
+  }
+
+  // ---------- DOM helpers ----------
+  const $ = id => document.getElementById(id);
+
+  function renderResults(list){
+    const container = $('resultsList');
+    if(!list || list.length===0){ container.innerHTML = '<div style="color:#666">No results</div>'; return; }
+    container.innerHTML = '';
+    list.forEach(item=>{
+      const div = document.createElement('div');
+      div.className = 'movie-item';
+      div.innerHTML = `
+        <img src="${item.Poster && item.Poster!=='N/A'?item.Poster:'https://via.placeholder.com/56x80?text=N/A'}" alt="poster">
+        <div class="meta"><b>${item.Title} (${item.Year})</b><div>Type: ${item.Type}</div><div style="font-size:12px;color:#666">IMDB ID: ${item.imdbID}</div></div>`;
+      div.addEventListener('click', ()=>selectMovie(item.imdbID));
+      container.appendChild(div);
+    });
+  }
+
+  function renderDetails(details){
+    const box = $('details');
+    if(!details){ box.innerHTML = 'No movie selected'; return; }
+    box.innerHTML = `
+      <div style="display:flex;gap:12px">
+        <img src="${details.Poster && details.Poster!=='N/A'?details.Poster:'https://via.placeholder.com/120x170?text=N/A'}" alt="poster" style="width:120px;height:170px;object-fit:cover;border-radius:6px">
+        <div>
+          <h3 style="margin:0">${details.Title} (${details.Year})</h3>
+          <div style="font-size:13px;color:#333;margin-top:6px">${details.Genre || ''}</div>
+          <div style="margin-top:8px;font-size:13px">IMDb Rating: ${details.imdbRating || 'N/A'}</div>
+          <p style="margin-top:10px;font-size:14px;color:#333">${details.Plot || ''}</p>
+        </div>
+      </div>`;
+  }
+
+  function renderRecommendations(list){
+    const ul = $('recs');
+    ul.innerHTML = '';
+    if(!list || list.length===0){ ul.innerHTML = '<li style="color:#666">No recommendations</li>'; return; }
+    list.forEach(m=>{
+      const li = document.createElement('li');
+      li.innerHTML = `<b>${m.Title} (${m.Year})</b><div style="font-size:12px;color:#444">${m.Genre || ''} — IMDb: ${m.imdbRating || 'N/A'}</div>`;
+      ul.appendChild(li);
+    });
+  }
+
+  // ---------- OMDb API calls ----------
+  async function searchOMDb(query){
+    if(!OMDB_API_KEY || OMDB_API_KEY === 'YOUR_OMDB_API_KEY'){
+      throw new Error('OMDb API key not set. Replace OMDB_API_KEY in the code.');
+    }
+    const url = `https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&s=${encodeURIComponent(query)}&type=movie`;
+    const r = await fetch(url);
+    const j = await r.json();
+    if(j.Response === 'True'){
+      // store minimal fields
+      cache.searchResults = j.Search || [];
+      return cache.searchResults;
+    }
+    return [];
+  }
+
+  async function fetchDetails(imdbID){
+    if(cache.details[imdbID]) return cache.details[imdbID];
+    const url = `https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&i=${imdbID}&plot=short`;
+    const r = await fetch(url);
+    const j = await r.json();
+    if(j && j.Response === 'True'){
+      cache.details[imdbID] = j;
+      return j;
+    }
+    return null;
+  }
+
+  // ---------- UI actions ----------
+  async function doSearch(){
+    const q = $('query').value.trim();
+    $('recs').innerHTML = '';
+    $('details').innerHTML = 'No movie selected';
+    if(!q){ renderResults([]); return; }
+    try{
+      $('resultsList').innerHTML = 'Searching...';
+      const results = await searchOMDb(q);
+      renderResults(results);
+    }catch(err){
+      $('resultsList').innerHTML = `<div style="color:red">Error: ${err.message}</div>`;
+    }
+  }
+
+  async function selectMovie(imdbID){
+    $('details').innerHTML = 'Loading details...';
+    try{
+      const details = await fetchDetails(imdbID);
+      renderDetails(details);
+      // Build pool: try to fetch details for cached search results (limited to first 10 to avoid too many requests)
+      const poolIDs = cache.searchResults.map(s=>s.imdbID).filter(id=>id!==imdbID).slice(0,8);
+      const poolPromises = poolIDs.map(id=>fetchDetails(id));
+      const pool = (await Promise.all(poolPromises)).filter(Boolean);
+      // If pool too small, optionally (could be extended) — we'll just use what we have
+      const recs = recommendFromPool(details, pool, 5);
+      renderRecommendations(recs);
+    }catch(err){
+      $('details').innerHTML = `<div style="color:red">Error: ${err.message}</div>`;
+    }
+  }
+
+  // ---------- Simple unit testing harness (no external libs) ----------
+  function assertEquals(a,b,msg){
+    if(JSON.stringify(a) !== JSON.stringify(b)) throw new Error(msg + ' — expected: ' + JSON.stringify(b) + ' got: ' + JSON.stringify(a));
+  }
+
+  function runUnitTests(){
+    const out = [];
+    try{
+      // parseGenres
+      assertEquals(parseGenres('Action, Drama, Sci-Fi'), ['Action','Drama','Sci-Fi'], 'parseGenres failed');
+      out.push('parseGenres: ok');
+
+      // safeParseRating: string
+      assertEquals(safeParseRating('7.2'), 7.2, 'safeParseRating string failed');
+      out.push('safeParseRating (string): ok');
+
+      // rankByRating
+      const sample = [ {Title:'A', imdbRating:'7.1'}, {Title:'B', imdbRating:'8.2'}, {Title:'C'} ];
+      const ranked = rankByRating(sample);
+      assertEquals(ranked[0].Title, 'B', 'rankByRating ordering failed');
+      out.push('rankByRating: ok');
+
+      // recommendFromPool
+      const selected = {imdbID:'sel', Genre:'Action, Thriller', imdbRating:'8.0', Title:'SEL'};
+      const pool = [
+        {imdbID:'p1', Genre:'Action, Comedy', imdbRating:'6.1', Title:'P1'},
+        {imdbID:'p2', Genre:'Romance', imdbRating:'9.0', Title:'P2'},
+        {imdbID:'p3', Genre:'Action, Thriller', imdbRating:'7.5', Title:'P3'},
+      ];
+      const recs = recommendFromPool(selected,pool,2);
+      // P3 shares two genres — should be first
+      assertEquals(recs[0].imdbID, 'p3', 'recommendFromPool ordering failed');
+      out.push('recommendFromPool: ok');
+
+      $('testOutput').textContent = out.join('\n');
+      $('testsBox').setAttribute('aria-hidden','false');
+      $('testOutput').className = 'ok';
+    }catch(err){
+      $('testOutput').textContent = 'Test failed: ' + err.message;
+      $('testOutput').className = 'bad';
+      $('testsBox').setAttribute('aria-hidden','false');
+    }
+  }
+
+  // ---------- Wiring ----------
+  document.getElementById('searchBtn').addEventListener('click', doSearch);
+  document.getElementById('runTestsBtn').addEventListener('click', runUnitTests);
+  document.getElementById('query').addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
+
+  // Initial quick search to demo (optional)
+  //doSearch();
+  </script>
+</body>
+</html>
